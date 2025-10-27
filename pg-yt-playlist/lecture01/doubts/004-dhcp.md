@@ -1,0 +1,1 @@
+**DHCP (Dynamic Host Configuration Protocol)** is a network service that **automatically assigns IP addresses** (and related settings like gateway and DNS) to devices when they connect to a network — so you don’t have to set them manually.

@@ -1,0 +1,242 @@
+building an ecommerce application like amazon
+serves a massive traffic
+operates globally
+
+at a very high level
+we have a client and a server
+
+server is a machine capable of running 24X7
+server has a public IP Address
+public IP Address is publicly accessible
+server need not be on cloud, our laptop too can act as a server
+to make our laptop a server, we need to able to run in 24X7, we need to assign our server a public IP Address
+
+we can't run our laptop 24X7
+we don't want our personal machine to have a public IP Address
+❓ what is a public IP Address
+
+companies like AWS and DigitalOcean give us a virtual machine that runs 24X7, and gives that virtual machine a public IP Address
+
+client can make request to the server using the server's public IP Address
+client cannot make request without server's public IP Address
+
+remembering IP Addresses is hard
+we should better have a user-friendly name
+here comes DNS server
+
+DNS server is a global directory of key-value pairs
+keys are domain names
+values are IP Addresses
+
+we type in domain name
+request is sent to DNS
+DNS sends us the IP Address
+now we can make request to the server (using the IP Address)
+this is called DNS resolution
+
+when we buy a domain name
+and get an IP Address for it
+we need to pay fees that goes to DNS servers
+
+DNS server works in a de-centralized manner
+DNS server is a global directory
+
+when a server receives too many requests
+amount of requests that the server can't handle
+then server crashes
+we see "server down" message on screen
+we need to make our server fault tolerant
+we can increase the resources of our machine
+when more users arrive, we can increase resources of our machine even more
+but increasing resources massively won't be a good idea
+because everytime, the traffic isn't high
+traffic is high sometimes, and low sometimes
+so we are wasting such huge amount of resources (specially during the low traffic periods)
+so increasing resources massively isn't a good idea
+upgrading the resources of our server for the worst case (too much traffic) isn't good idea
+
+this is called vertical scaling
+increasing resources of our server
+
+downside of vertical scaling : we can't do vertical scaling on a running machine
+we need to restart machine after adding physical resources
+restarting introduces downtime
+we need zero time
+
+solution is horizontal scaling
+adding more servers
+will lead to zero downtime
+website may get slow sometimes (during the new server spin up period), but it better than non-zero downtime
+
+but the problem with horizontal scaling is
+different server will have different IP Addresses
+all the users would be directed to the same single server because DNS directs all the users to that same single server
+so traffic isn't getting distributed
+here comes load balancer
+load balancer will distribute the traffic
+
+load balancing
+we introduce a load balancer
+we'll register our load balancer's IP Address on the DNS server
+so all the users will be directed to the load balancer (first)
+load balancer will balance the incoming load among the servers
+
+load balancing on the load balancer is done using different algorithms
+the simplest algorithm is round robin algorithm
+round robin algorithm : if we have three servers, first request to the first server, second request to the second server, third request to the third server, fourth request to the first server
+when traffic decreases we can turn some servers off, and then load balancer will be working accordingly
+so servers need to registered with the load balancer
+when server is introduced, it first boots up, then load balancer checks if the intorduced server is healthy or not, if the introduced server is healthy then load balancer will include it while distributing the traffic
+amazon's terminology for load balancer is elastic load balancer
+
+we have many services inside a microservice architecture
+every service will have its own server(s)
+we want different endpoints to target different microservices and hence different servers
+we need a "route routing" server which will direct requests comming to a specific endpoint to a specific microservice and hence to specific set of server
+but from that specific set of servers (of a specific microservice) which server should receive the request
+for resolving that we'll keep load balancers for each microservice
+so request to a particular endpoint should go to the load balancer of the specific microservice
+that "route routing" server is called API gateway
+here we need to register our API gateway's IP Address on the DNS server
+
+we can also attach an authenticator service with our API gateway
+
+we have this large system
+we surely would have some batch processing within this system
+suppose we want to email every customer for informing them about the upcoming sale
+running such a long loop on a server isn't a good idea
+for this we can have some background services
+suppose we have an email worker
+this email worker sends email to every user in our database
+similarly we can have a bulk worker
+suppose we want to send an email to the customer after he/she does payment
+so internally the /payment endpoint should trigger our email worker
+the email worker may talk to an external service like gmail's api, send the email and send back a response to the /payment endpoint
+this is synchronous way
+this introduces waiting
+the /payment endpoint has to wait for the response from the email worker
+sending an email can take time (here, it involves talking to an external API also)
+so let's make this asyc
+solution is to use a queue system
+a queue system working on first in first out principle
+so the email worker will pull an event from the queue system, send the email and discard that event
+that's why we receive emails after some time (and not immediately)
+as traffic grows we can horizontally scale our email worker
+doing this horizontal scaling here will also us to send multiple emails at the same time
+
+there's another advantage of horizontally scaling the email worker
+our email worker is interacting with an external service (gmail api)
+gmail api may restrict us to send only 10 emails in per second
+we can create a bottleneck on our own, we can tell the email worker to not pick more than 10 emails in a second
+so here we are using the queue system to communicate between two microservices
+amazon's terminology for this queue system is SQS (simple queue system)
+
+when we introduce a queue system another problem arises
+how to pick an event from the queue
+we have two mechanisms for that
+one is push and one is pull
+in pull mechanism, the email worker invokes the queue by asking is there any task/event
+in push mechanism, the queue invokes the email worker by scheduling task/event
+in SQS we have pull mechanism (called polling)
+we can either do long polling or short polling
+short pollig is quick, it increases costs
+long polling is slow
+
+when we make payment
+we want to notify the customer
+we want to notify the vendor
+we want to do many more things
+in that case
+we can use pub sub model instead of queue system
+amazon's terminology : SNS (simple notification service)
+when a payment is done, the SNS will be notified about the payment
+now from the SNS, multiple services or workers can receive it 
+services or workers like email workers, whatsapp workders/services, SMS workers/services
+
+in queue system, if an email worker gets a particular event, then another email worker won't get that particular event
+we push an event, and then, only one consumer can take it
+but this is not the case with pub sub model
+in pub sub model, all the consumers will be notified about the event
+pub sub model is called event driven architecture
+
+problem with event driven architecture
+there is no acknowledgement
+
+in queue system we have acknowledgement
+suppose an email worker takes an event
+but due to some reason (suppose the gmail api was down) the email couldn't be sent 
+then, that task can be sent back to the queue, and then be picked up later
+or that task can be sent to dead letter queue, and then be picked up later
+
+in pub sub model there is not acknowledgement
+a worker or service get notified about an event (or a worker or a service takes up an event)
+due to some reason that worker or service couldn't do the prescribed task with that event
+there's no facility for that failure to be acknowledged
+so we have no retry mechanism in pub sub model
+we would have to built the retry mechanism ourself
+this is not exactly pub sub model, this is notification or event emitting
+
+fan out architecture
+whenever an event occurs, we off course would want to do mulitple things
+we won't use SNS here because of "lack of acknowledgement" issue
+we will use fan out architecture
+suppose we have three queues : email queue, whatsapp queue, SMS queue
+every queue (here) has multiple servers listening to them
+we take an SNS and bind the queues to it
+SQS is handling our queue systems
+so we have a SNS linked to multiple SQS
+one event occurs
+all the queues will have the event entering it
+all the queues have EC2 servers attached to them
+if a particular queue's event/task fails, that event can re-enter the queue
+so we solved the "lack of acknowledgement" problem
+
+our system or service or application may also be overwhelmed by fake requests or DDOS attacks
+so we must implement some "rate-limitting"
+rate-limitting limits the amount of requests that can be sent in a particular period of time
+we have multiple rate limitting strategies
+like "leaky bucket", "token bucket"
+
+read https://www.eraser.io/decision-node/api-rate-limiting-strategies-token-bucket-vs-leaky-bucket
+
+we will also be having a database
+microservices will either be querying the database or reading the database
+having a single database can be overwhelming
+because we have many many microservices
+there are multiple ways to scale out a database
+simple ways is to make replicas
+read replicas and write replicas
+
+problem with READ replica databases
+the data inside it is little delayed
+one is primary node and others are read replicas
+data will be inserted into primary node only
+real time data fetching should also occur from primary node
+but for analytics service and logs service, where a little delay is okay, we will be using read replicas
+doing so decreases the load on the primary node
+this is one way of optimizing the database
+
+if we are doing any complex comptation
+then we should cache it
+for that we need to use REDIS
+REDIS is an in memory database
+for if we don't have something, we'll first look into REDIS, if it's available there, we will take it from there, if it's not available there, we will head to database, cache the resul in REDIS and return the cached data from REDIS
+using caching we reduce the no. of calls on the database
+
+also
+we won't be directly exposing our load balancer
+we will fit a CDN before our load balancer
+content delivery network
+amazon's terminology CLOUD FRONT (for CDN)
+we need to deploy cloud front
+all the cloud front machines are routed to load balancer
+our request is sent to nearest cloud front first
+
+but how can different cloud front deployments have the same IPs
+for that we will use anycast
+user will be routed to nearest anycast
+upon receiving request, cloud front deployment check its cache for the availability of the requested resource
+if it available, the customer will be served
+if not, it will be fetched from the server (travelling through load balancer then services), it will be cached on the cloud front deployment, and then customer will be served
+so anyone else in the same region as the first customer will get the response from the cached data present in the cloud front deployment
+so we will be able to resolve the request much quickly
