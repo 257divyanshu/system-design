@@ -1,0 +1,187 @@
+every company has a different usecase, a different USP (unique selling proposition)
+every company has a different traffic pattern
+
+the aim of system design is to make our application/software scalable and fault tolerant
+in system design we try to balance two things : our system shouldn't crash and our costs are optimized
+
+youtube, hotstar and netflix are all video streaming platforms
+but they all have different system designs
+because they have different traffic patterns
+
+talking about netflix's system design
+if netflix handles 3M traffic globally
+but suddenly some day, traffic spikes (burst), the system will crash
+
+scaling up a system doesn't happen magically
+scaling up is done based on some parameters, based on some policies
+policy determines when the system should scale
+suppose we can have a policy like : if in the previous minute, number of requests were more than 1000, then add a server
+suppose we can have a policy like : if average CPU utilization is more than 70%, spin up a new server
+suppose we can have a policy like : if average memory usage is more than 70%, then spin up a new server
+so through policies we tell the system when to scale
+
+if the traffic increases gradually, our policies will handle it by scaling accordingly
+but what if traffic spikes suddenly, our policies may not be able to handle it, and hence our application/software may crash
+so handling such traffic spikes is difficult
+
+talking about netflix again
+such traffic spikes occur when a new movie is released
+movies are released suddenly
+movies' timeline's are well defined
+on this date, the trailer will be rolled out
+on this date, the movie will be released
+since netflix knows when exactly the movie is to be released, it can pre-scale its system
+so using data netflix can predict the spike
+because they can predict the spike, they can pre-scale the server
+so netflix can warmup more servers, some time (like 24 hours) before the movie is released
+if traffic actually spikes, netflix can now serve the traffic
+if traffic doesn't spike due to some reasons, netflix can scale down
+netflix can also cache the first 10 minutes of the movie on the cdn servers (globally) (before the movie is released)
+
+netflix could predict the traffic spike because it netflix itself who does the publishing work
+but in case of youtube, youtube cannot predict the traffic spike because youtube itself doesn't do publishing work
+some content creator with huge audience might go live, or might drop a video that goes viral, youtube can't predict this
+some kind of traffic spike prediction is possible in case of youtube, such as traffic spike on educational content due to upcoming college exam season, such as traffic low on festive seasons like deepawali
+so youtube's system design is so advance that it can handle sudden spikes as well
+
+now let's talk about hotstar's system design
+hotstar does something similar to netflix
+but hotstar also does cricket's live streaming
+suppose hotstar has two services, one for movies and one for live streaming
+live streaming isn't used as much as movies service
+but tomorrow is cricket match, so hotstar can scale up streaming service and scale down movies service
+but after toss, traffic decreases, but we can't scale down
+after some time, when India is batting, traffic might increase
+after some time, when runrate goes slow, traffic might decrease
+so within the hours of match the traffic might keep on increasing and decreasing randomly
+so for those match hours we need to turn off autoscaling
+we need to bear the costs of scaled up system for match hours
+
+but something can go wrong here as well
+we have scaled down movies service
+but this might cause problems
+when the match becomes un-interesting for some period of time, the users will press back button and see the movies list, so movies service might face traffic spike
+so scaling down the movies service can cause problems
+
+so with these three system design case studies, we understood that every compnay designs it system in a different way, depending on their USP, depending on their use case, depending on their traffic pattern
+
+so initially we design systems, we monitor the system, we monitor the traffic, we analyze the traffic, we make changes in our system design, we do some optimizations
+
+talking about youtube's system design
+because youtube's traffic spikes aren't alway forecastable, auto-scalling can't be relied on
+the problem with adding new machines while scaling up is that these machines are physical machines, they need to be turned on, server might need to install somethings, this might take time
+another problem is managing these physical machines has a lot of overhead, how much cpu to allocate, how much ram to allocate, what ip to allocate, register them with load balancer
+so we have this cubmersome work of handling our system design
+and this would decrease our focus on our application code part of software/application
+
+to solve these problems, amazon introduced LAMBDA (serverless)
+serverless doesn't mean "no servers", it means "you don't need to manage servers"
+LAMBDA said give me a code file, how to handle stuff/requests, I'll do the rest, I'll give you a public url, we'll just use the url
+LAMBDA will be invoked for each requests, LAMBDAs are lightwieght functions, they'll be spinned up when more requests come in, they'll be deleted when requests decrease
+
+downside of these LAMBDA : cold start
+cold start means spinning up the first LAMBDA will take some time
+subsequent LAMBDA spin ups won't take much time
+so the first user, the first request will expeience a latency
+
+PROS of LAMBDA
+it's cheap
+
+CONS of LAMBDA
+cold start latency
+duration fixed (suppose : we can't take more than 15 seconds to return a request)
+DDOS attack would invoke many LAMBDAs
+vendor lock in (if we are using LAMBDAs, we wil also be using other AWS features, like SQS, API GATEWAY, ROUTE 53, S3, CLOUDWATCH)
+
+also we can't do configuration
+that's a PRO and a CON as well
+
+also we can't maintain states
+
+LAMBDAs are connected to our database
+every LAMBDA is connected
+our database might be MongoDB
+so there will too many connections
+we then, would need to implement a reverse proxy, so that all the LAMBDAs connection with this revers proxy, the reverse proxy will do the connection management with the MongoDB
+we'll need a stateful machine to do connection management, which means we'll need an EC2, that too will introduces costs, also we'll also need to scale that too
+
+suppose we have a server with IP Address 10.2.3.5
+it has 2 cpus
+it has 4 GB ram
+we want to add a replica of this server
+this replica creation isn't that easy
+the code running on the server is sure to have some dependencies
+whenever a new server is spinned up, we need to install those dependencies first
+this dependency installation will take some time, in that period of time the existing servers (which were handling the traffic) might crash, we may lost customers/users
+so spinning up a new machine is a heavy process
+
+another probelm "IT WORKS ON MY LOCAL"
+suppose in our local, we have a dependency installed, it's version is 0.4.2
+when we push our code for deployment, the machine on the deployment is an ubuntu (and not windows), suppose the version of dependency that got installed there is 0.4.5
+so, our code won't run
+also, we are sure to have many dependencies (and not just on dependency)
+so the versions of dependencies installed on the server should be in sync with the versions that are in our local
+
+to solve this problem we use the concept of "virtualization" 
+we can create virtual machines in our local
+in every VM we put an operating system, and install the dependencies in it
+then we can deploy that VM on our server
+before deploying the VM, we make sure that our VM is up and working in our local
+so inside the outer physical machine, we have an VM running
+this solves the "dependency tracking" problem
+so we can make sure that "IT WORKS ON ANY MACHINE"
+
+but there's a problem with virtualization
+virtualization is heavy
+why it's heavy, because we are running a VM having it's own OS, inside a physical machine (which has its own OS)
+because it's heavy, it'll need much more resources
+because now, in a single (physical) machine, we are occupying space for two OS
+also, spinning up, here will also take time (OS have huge size)
+so we couldn't solve the "scaling up will take time" issue (or "spinning up new machine will take time" issue)
+
+google faced this same problem while scaling up
+even after using virtualization to ensure "it runs on any machine", much  resources was being used, scaling up (spinning up new machines) was still slow
+so they came up with "containerization"
+container is a lightwieght VM
+but how did they make VM lightwieght
+by removing OS layer (on a high level)
+VM (before containerization) contained OS, packages, code
+OS was taking most space
+in containerization, OS was removed from the VM
+so container is a lightwieght VM
+the OS of the physical server (host machine) will be used instead
+since VMs now are lightwieght, we can run many VMs inside a single physical server
+before a machine gets full, we'll spin up another machine
+so containerization simplified scaling
+
+overhead that containerization brings
+we need to manage those containers (too)
+all those containers need a brain (which can manage them)
+it's brain which will create replicasa of containers when required
+it's brain which will delete containers when traffic decreases
+this is called container orchestration
+
+container orchestration is the process of automating the deployment, management and scaling of containerized applications across a cluster of servers
+
+suppose we changed the code
+now the old containers need to be deleted and new containers need to spinned up, this is called rolling updates
+
+to do container orchestration we need to build a contaienr orchestrator
+that's a overhead
+google developed BORG (a container orchestrator for their internal uses)
+BORG was a large scale container management system management
+
+other companies who were using containerization on large scale, too were facing the "container management problem"
+they too needed a container orchestrator
+
+the team that build BORG, built another project from their BORG building learnings, which could handle this container orchestration for different use cases
+google than open sourced that new project
+then donated it to CNCF
+and that project was KUBERNETES
+
+so KUBERNETES manages containers in a cluster of servers
+
+in modern development we use KUBERNETES
+through it we ensure zero downtime
+
+comapnies like HOTSTAR simulate fake traffic before match days, they do load testing and stress testing
