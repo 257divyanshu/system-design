@@ -1,0 +1,35 @@
+topic : event sourcing
+works differently (than traditional updates)
+
+we'll see how we can build a scalable system using event sourcing pattern
+
+the approach we take in event sourcing is quite different from the approach we take in case of crud operations
+
+crud stands for create read update delete
+
+event sourcing behaves quite differently (from crud operations)
+
+we'll see what is event sourcing
+and how big companies use event sourcing
+and how can we implement event sourcing
+
+event sourcing is inspired by event driven architecture
+so first we need to understand what is an event driven architecture
+but before that we must understand what an event is
+
+talking about events
+on an e-commerce application, adding item to cart is an event, checking out an item is an event, product upload is an event, product price update is an event
+
+so in a big system we have different different types of events (that we process)
+
+usually to process an event we perform an action on database
+
+an example of traditional approach
+user sends a request (to api gateway) to update a product
+api gateway will route that request to a reverse proxy (like nginx)
+nginx will point to the actual server
+server will update the database
+so user has to send a patch request (for the product with product id 1, this is the updated price)
+whenever another user sends a request for this product, he/she will get the updated product price
+
+⏸️ 04:00

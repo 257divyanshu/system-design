@@ -1,8 +1,3 @@
-Excellent — these are *very thorough* notes 👏
-Let’s break this down clearly and efficiently.
-
----
-
 ## 🧠 1. Summary of Your Notes (Simplified Overview)
 
 You’re designing a **large-scale e-commerce system** (like Amazon) — learning how to handle massive traffic, ensure uptime, and optimize performance.
@@ -149,8 +144,3 @@ Your notes already cover:
 * The missing pieces are **distributed systems theory**, **resilience patterns**, and **observability**.
 
 If you study the “Topics to Deep Dive Into” and the “Comprehensive System Design Topics” together, you’ll have a complete roadmap to move from *beginner → intermediate → advanced* system design.
-
----
-
-Would you like me to turn this into a **learning roadmap (with weeks or milestones)** next?
-I can map these topics into a structured 4–6 week plan tailored for your learning pace.
