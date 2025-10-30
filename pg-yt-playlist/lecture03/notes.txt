@@ -1,5 +1,5 @@
 topic : event sourcing
-works differently (than traditional updates)
+works differently (from traditional updates)
 
 we'll see how we can build a scalable system using event sourcing pattern
 
@@ -24,7 +24,7 @@ so in a big system we have different different types of events (that we process)
 
 usually to process an event we perform an action on database
 
-an example of traditional approach
+an example of traditional approach:
 user sends a request (to api gateway) to update a product
 api gateway will route that request to a reverse proxy (like nginx)
 nginx will point to the actual server
@@ -32,4 +32,138 @@ server will update the database
 so user has to send a patch request (for the product with product id 1, this is the updated price)
 whenever another user sends a request for this product, he/she will get the updated product price
 
-⏸️ 04:00
+problem with the approach we just discussed:
+suppose our system scales
+now, there will be many updates and many read requests going on
+our database will become a bottleneck
+when an updation is going on, on a database row, that row needs to be locked
+and a locked row in database cannot be accessed
+that's one issue
+the second issues is regarding state management
+state management is a big problem
+let's take an example to understand this state management problem
+we are making a video processing server (like youtube)
+when a video is uploaded, it's processed first (and is not directly made available for the viewers)
+videos are processed, are encoded into differnt resolutions, are transcribed, are optimized
+processing a video is a time consuming task
+state management will be a crucial part of this video processing system
+
+let's make system design of a video processing pipeline, and then we'll fix it using event sourcing
+a user uploads a raw video
+we'll update the staus to "UPLOADED" in database (we are managing states)
+we have many EC2 machines that process these videos
+we have a worker pool of 4 workers
+whenever a server gets free it will start processing the video
+so we'll update the status to PROCESSING (in database)
+if video got processed successfully then we reupload the video and set status to SUCCESS
+if video could not be processed due to any reason, then it's status will be updated to FAILED
+this (managing states) looks easy
+but it isn't easy
+let's write the pseudocode of this state management
+
+pseudocode of this state management:
+if "user uploads video" "db updates status to UPLOADED"
+when "worker pics a video for processing" "db updates status to PROCESSING"
+when "worker is done", first "reupload processed video" and then "db updates status SUCCESS"
+these three workflows are okay
+but there might be a case when "user uploaded the video" but "db's status updation to UPLOADED" couldn't happen due to some reason (due to some proelems in database, or due to problem in database query), so the video uploaded successfully but we couldn't mark it UPLOADED in database
+similarly there might be a case when, "worker picked up the video for processing" but "db's status updation to PROCESSING" couldn't happen due to some reaon, so the video is actually getting processed but we couldn't mark it PROCESSING in database, the status will stay UPLOADED
+similarly, there might be a case when our third workflow which includes "worker is done" couldn't update the database status to "SUCCESS" after re-uploading the processed video, or there might be a case when the third workflow couldn't re-upload the processed video, the status will stay PROCESSING
+so we now understand that this "state management" is a big problem in the backend
+it's difficult to maintain the state of what's happening in our server
+there's a high possibility that things may go out of sync
+also we have no way to track things back
+technically we don't have "events" here
+here's were "event sourcing" comes in
+
+event sourcing says that our "source of truth" should be events
+in event sourcing we don't do updates on database
+because in database we are doing atomic operations
+without event sourcing, the old status was getting replaced by new status, and if this replace operation fails we'll be out of sync (we are just updating the "status" string in our database to "most recent state")
+event sourcing says us to "add event logs" whenever anything happens
+event-log works on append-only log system, because we don't want to lose the order of events
+
+in event sourcing:
+we won't be updating anything on the database, we'll always be triggering an event
+when the user will upload a video, we will log an event into the event log, this event will have a name "videoUpload", will have some data, will have some id, will have some path
+when a worker picks up the video, the worker will emit another event into the event log, this event will have name "videoProcessingInit", with some data, with some id 
+we can also emit events into the event log, while the worker is processing the event
+when the worker completes processing and re-uploads the video, we can trigger another event with name "videoProcessingSuccess", with some data, with some id
+every event also has a timestamp
+we keep these event logs in a storage (suppose S3 storage)
+
+hydration means re-constructing the state using events
+to determine the current state we'll do this hydration
+and we won't be depending on some string value do determine the current state (which we were doing earlier, before implementing event sourcing)
+
+let's take an example of banking system
+we want to maintain the current balance state of users
+so instead of updating the balance column in database every now and then
+we'll keep event logs named "Depost" and "Withdraw" with amount data
+when the user requests for current balance, we'll use hydration (to re-construct the state using events) and get the current balance, and send that current balance to the user
+also, if the user wants to know the transaction history, we can server him/her using the logs in the event log
+
+so in event sourcing, we take events as the source of truth
+with this log of events, replaying and audit trailing becomes easy
+also with these event logs, we can implement a timemachine to serve the user when he/she wants the know the balance at a particular time in history (this won't be possible if we were doing atomic operations on database)
+
+so in event sourcing, we rely on events for the current state
+
+🟨 even though we have append-only logs here, we need to be very careful while reading the logs
+
+hydration looks like an efficient process, because we will have to run the whole logs again for serving the request
+to solve this we can do caching
+after reading an event we can create its cache
+we'll have a database to store state, this state will be determined by most recent state, which will be determined the logs in event log
+mind that we won't by updating the state synchronously on user actions
+we'll take help of hydration process, hydration process will run the events in sequence and update the state
+so, the users can query from this database
+suppose, the user claims that the provided state is not right, we can do re-concilation
+in re-concilation, we'll replay events, and update the state
+so using event sourcing, we aren't just maintaining state, we are also maintaing the log of how we reached that state
+
+now implementing this event source pattern on scale will introduce a problem
+
+the problem:
+we had an event stream
+to consume this event stream, we have spin up some servers
+suppose the the first worker is under workload
+in a video processing pipeline, we would have the following streams : videoUploaded, videoProcessingInit, videoProcessingSuccess
+suppose the videoUploaded event is picked by the first worker, because first worker is under load, it's processing it
+suppose the second event (videoProcessingInit) is picket up by second worker, and the second worker updates the state in our database to PROCESSING
+suppose the third event (videoProcessingSuccess) is picked up by third worker, and the thrid worker updates the state in our database to SUCCESS
+and now the first worker updates the state in our database to UPLOADED
+now this is problematic
+our workers went out of sync
+the user will complaint us
+on receiving a complaint, we might replay the event stream and update the state in the database to the correct database, to solve the issue
+but we should fix our system design to prevent those complaints in first place itself
+
+consumer groups and topic partition will solve this problem
+when a consumer runs, it subscribes/listens to a specific partition
+partition is a type of index
+suppose we have two videos, video A and video B
+we will always emit events of video A on partition 0 and events of video B on partition 1
+we'll make sure that all the events of a partition is handled by one worker (only)
+in this way, sequence will be guraranteed (even if the worker is busy)
+
+in kafka we have consumer groups and topic partition
+
+another example for understanding consumer groups and topic partition
+suppose we made a consumer group, that contains multiple processor functions (or servers)
+when these processor functions (servers) run, they subscribe to a particular partition
+suppose server 1 got assigned partition 1 and 3
+and suppose we have decided that we'll give all the events of a video to a single partition
+so server 1 will receive the events of 2 videos
+and no events of those 2 videos will be given any other server
+
+so in event sourcing the "event's appen-only logs" acts as source of truth rather than changing the state directly in the database
+
+readings:
+event sourcing is a software design pattern where changes to an application's state are stored as a sequence of events rather than just a currect state. instead of updating the data directly, each state-changing action is recorded as an event in an append-only log. this allows for reconstructing the application's state at any point of time by replaying these events
+
+but after implementing event sourcing pattern, going back is difficult because we would have to re-architecture our whole system to makes events act as single source of truth
+
+rather than directly adding something to database, we make them emit events, and picking those events we change the state
+
+through consumer grouping and topic partitioning we ensure that all the events of a particular object go to a single server (in order to maintain the correct sequence)
