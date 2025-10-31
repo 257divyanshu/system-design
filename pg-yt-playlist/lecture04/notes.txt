@@ -1,0 +1,104 @@
+topic : CQRS system design pattern
+
+in this lecture, we'll cover:
+- what is CQRS (command query responsibility segragation)
+- how can it help us to scale complex applications
+- what is the intention behind this CQRS system design pattern
+- how advanced system designs use this pattern to optimize their database operations
+
+DISCLAIMER : CQRS pattern is used in highly complex systems
+it's not like we have to implement this pattern in every basic application
+this pattern is only meant for complex system designs
+
+before studying about CQRS system design pattern, we need to look at how traditional applications work
+
+in traditional applications we have a user (the person using our system)
+this user will interact with our server
+
+let's try breaking down the server layer
+in server layer we have REST API endpoints
+we are sure to have some endpoints exposed (we might have used Django or FastAPI or Express for this)
+REST APIs expose HTTP endpoints
+GET, POST, PATCH requests are made by the users
+based on the request, we call the appropriate controller or service layer
+means we have a controller layer
+if the request was a GET request, the controller will read something from the database
+and then the data (that was read from the database) will be returned to the user
+for PATCH request a different controller will be called, and this controller will do updations on the database
+for creating something, the user will make a POST request, this POST request will call a different controller, and this controller will do the insertion in the database
+
+🖼️ see image01.png (working of traditional applications)
+
+for scaling this traditional application we scale our servers
+we user vertical scaling or horizontal scaling
+vertical scaling means adding more resources
+horizontal scaling means adding more machines/servers (cloing servers)
+
+decent level products work in this traditional way
+
+there's a bottleneck
+whenever our system gets slow, we need to identify the bottleneck
+our database is getting overwhelmed, because we are doing create, read, update and delete, all at this one place
+
+how does the database becomes overwhelmed
+suppose one database transaction was trying to read something from the database
+and at the same time, another database transaction was trying to update something on the database
+suppose the updation database transaction acquired a lock (a database transaction level lock)
+and when this happens frequently (a lock has been acquired by a database transaction and at the same time many requests are trying to read from the database), then the database becomes bottleneck, our queries get slow (that too on the scale of our application)
+
+to prevent this problem we have CQRS pattern
+
+from amazon's blog: (https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/cqrs-pattern.html)
+- the CQRS pattern separates the data mutation (cration, updation, deletion) or the command part of the system from the query part
+- we can use CQRS pattern to separate updates and queries if they have different requirements for throughput, latency or consistency
+- the CQRS pattern splits the operation into two parts : command side and query side
+
+so we kind of divide CRUD into two parts : command and query
+command part handles create, update and delete (handles data mutation)
+queyr part handles read
+
+api gateway acts as an entrypoint to a system
+we will apply a rule on the api gateway, according to this rules, GET requests will be directed to the query server, POST PATCH DELETE requests will be directed to the command server
+users will first interact with the api gateway
+api gateway will route them to the correct server based on the http method
+
+🖼️ see image02.png
+
+suppose we are currently having a single database (with the api gateway routing requests to command and query servers based on the users requests)
+🖼️ see image03.png
+in CQRS's command side we have a presentation layer
+this presentation layer contains the endpoints that will be exposed to the user
+in CQRS pattern we neven directly mutate the database
+for every action we generate a command (this is done by command handler present in the command side)
+but, what is a command?
+in an e-commer application, a command can be productUpdateCommand(id, {payload}), another command can be productCreateCommand(id, {payload})
+in typicaly traditional approach our controller used to generate an SQL query and this query did the work on the database 
+but in CQRS system design pattern, these commands are given to a write model (present inside the command side), this write model analyzes the command and executes in on the database
+the write model is responsible for mutation the database
+and we can keep optimizing the write model for updates
+this was about the layers in the command side of the CQRS pattern
+
+🖼️ see image04.png
+
+now lets talk about the layers present in the query side of the CQRS pattern
+here also we'll be having a presentation layer
+then we have a query handler (corresponding to the command handler layer in the command side)
+then we have a read model (corresponding to the write model layer in the command side)
+read model is optimized for reading something from the database
+🖼️ see image05.png
+so here we encounter the "database bottleneck" problem due to a single database
+
+in CQRS pattern we actually segragate the database also
+we can have one database for writes and one database for reads
+but how these database would remain in sync?
+the writes made in the database must write into the read database
+for this we will use event system
+we will take a queue
+event updation on the write database will emit an event
+these events will eventually update the changes into the read database
+🖼️ see image06.png
+
+but still consistency is a problem here because write may take some time
+we here we have eventual consistency (there can be a delay for some time)
+if we are on a large system, we have two options : let the system crash due overwhelmed database (in case of traditional pattern which doesn't use CQRS pattern) or we can be satisfied with eventual consistency (by using CQRS pattern) 
+this system, desgined using CQRS pattern is more fault tolerant than the traditional system (which doesn't implement CQRS pattern)
